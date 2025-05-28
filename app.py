@@ -39,7 +39,7 @@ def fetch_house_trades():
 # 📊 Analyze trades with safe date handling
 def analyze_trades(df, days_back=14, min_trades=3):
     df['transaction_date'] = df['transaction_date'].astype(str)
-    df = df[df['transaction_date'].str.len() <= 25]  # filter junk
+    df = df[df['transaction_date'].str.len() <= 25]
     df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
     df = df.dropna(subset=['transaction_date'])
 
@@ -49,30 +49,6 @@ def analyze_trades(df, days_back=14, min_trades=3):
     buy_hits = buys['ticker'].value_counts()
     sell_hits = sells['ticker'].value_counts()
     return buy_hits[buy_hits >= min_trades].index.tolist(), sell_hits[sell_hits >= min_trades].index.tolist(), recent
-
-# 📈 Price chart with formatting
-def plot_price_chart(ticker, period="1mo", interval="1d"):
-    try:
-        data = yf.download(ticker, period=period, interval=interval)
-        if data.empty:
-            st.error(f"No data for {ticker}")
-            return
-
-        fig, ax = plt.subplots(figsize=(8, 3.5))
-        ax.plot(data.index, data['Close'], label="Close", linewidth=2)
-        ax.set_title(f"{ticker} Price Chart", fontsize=14)
-        ax.set_xlabel("Date", fontsize=10)
-        ax.set_ylabel("Price", fontsize=10)
-        ax.tick_params(axis='x', labelsize=9)
-        ax.tick_params(axis='y', labelsize=9)
-        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%b %d'))
-        plt.xticks(rotation=45)
-        ax.legend()
-        fig.tight_layout()
-
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Chart error for {ticker}: {e}")
 
 # 💼 Portfolio simulation
 def simulate_portfolio(df):
@@ -118,13 +94,6 @@ st.markdown("### ✅ Strong Buy Signals")
 st.write(", ".join(buy_signals) if buy_signals else "No buy signals")
 st.markdown("### ⚠️ Strong Sell Signals")
 st.write(", ".join(sell_signals) if sell_signals else "No sell signals")
-
-# UI - Price Chart
-st.subheader("📈 Live Price Chart")
-tickers = sorted(df["ticker"].dropna().unique())
-selected = st.selectbox("Select ticker", tickers)
-if selected:
-    plot_price_chart(selected)
 
 # UI - Leaderboard
 st.subheader("🏆 Congressmember Leaderboard")
