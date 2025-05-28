@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import requests
+import yfinance as yf
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
-# ✅ Fallback mock data if API is unavailable
+# ✅ Fallback mock data
 def load_mock_data():
     mock = [
         {"representative": "John Doe", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-10"},
@@ -15,15 +17,12 @@ def load_mock_data():
     ]
     return pd.DataFrame(mock)
 
-# ✅ Fetch trades from HouseStockWatcher or fallback to mock
+# ✅ Fetch trades from HouseStockWatcher or fallback
 @st.cache_data
 def fetch_house_trades():
     url = "https://housestockwatcher.com/api/transactions"
     try:
         response = requests.get(url, timeout=10)
-        st.caption(f"📡 API Status: {response.status_code}")
-        # Uncomment to debug content:
-        # st.code(response.text[:500])
         data = response.json()
         return pd.DataFrame(data)
     except Exception as e:
@@ -31,7 +30,7 @@ def fetch_house_trades():
         st.caption(f"Error: {e}")
         return load_mock_data()
 
-# ✅ Analyze for buy/sell signals
+# ✅ Analyze trades
 def analyze_trades(df, days_back=14, min_trades=3):
     cutoff = datetime.now() - timedelta(days=days_back)
     df['transaction_date'] = pd.to_datetime(df['transaction_date'])
@@ -48,7 +47,25 @@ def analyze_trades(df, days_back=14, min_trades=3):
 
     return buy_hits, sell_hits, recent
 
-# ✅ Streamlit UI
+# ✅ Draw price chart
+def plot_price_chart(ticker, period="1mo", interval="1d"):
+    try:
+        data = yf.download(ticker, period=period, interval=interval)
+        if data.empty:
+            st.error(f"No price data available for {ticker}")
+            return
+
+        fig, ax = plt.subplots()
+        ax.plot(data.index, data['Close'], label="Close Price")
+        ax.set_title(f"{ticker} Price Chart ({period})")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Price")
+        ax.legend()
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Error fetching chart for {ticker}: {e}")
+
+# ✅ UI
 st.set_page_config(page_title="House Stock Signals", layout="wide")
 st.title("🏛️ House Stock Buy/Sell Signals")
 
@@ -60,11 +77,16 @@ if not df.empty:
 
     st.subheader("📊 Signal Detection")
     buys, sells, recent = analyze_trades(df)
-
     st.markdown("### ✅ Strong Buy Signals")
     st.write(", ".join(buys) if buys else "No buy signals in past 14 days.")
-
     st.markdown("### ⚠️ Strong Sell Signals")
     st.write(", ".join(sells) if sells else "No sell signals in past 14 days.")
+
+    # ✅ Show live price chart
+    st.subheader("📈 Live Price Chart")
+    tickers = sorted(df["ticker"].dropna().unique())
+    selected_ticker = st.selectbox("Select a ticker", tickers)
+    if selected_ticker:
+        plot_price_chart(selected_ticker)
 else:
     st.warning("No trade data available.")
