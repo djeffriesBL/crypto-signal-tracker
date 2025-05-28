@@ -3,29 +3,38 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 
-# ✅ Paste your real API key between the quotes below
-API_KEY = "3RWGW2YEm0guedMt5kUAK05QxGW5JchJ"
+# ✅ Fallback mock data if API is unavailable
+def load_mock_data():
+    mock = [
+        {"representative": "John Doe", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-10"},
+        {"representative": "Jane Smith", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-12"},
+        {"representative": "Alice Johnson", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-13"},
+        {"representative": "Bob Brown", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-10"},
+        {"representative": "Eva Green", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-11"},
+        {"representative": "Mark Black", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-12"},
+    ]
+    return pd.DataFrame(mock)
 
-# ✅ Fetch trades from FMP Senate Trading API
+# ✅ Fetch trades from HouseStockWatcher or fallback
 @st.cache_data
-def fetch_senate_trades():
-    url = f"https://financialmodelingprep.com/api/v4/senate-trading?apikey=3RWGW2YEm0guedMt5kUAK05QxGW5JchJ"
+def fetch_house_trades():
+    url = "https://housestockwatcher.com/api/transactions"
     try:
         response = requests.get(url, timeout=10)
         data = response.json()
         return pd.DataFrame(data)
     except Exception:
-        st.error("⚠️ Failed to fetch data from FMP Senate Trading API.")
-        return pd.DataFrame()
+        st.warning("⚠️ Live API not returning valid data — using mock dataset.")
+        return load_mock_data()
 
-# ✅ Analyze trades for buy/sell signals
+# ✅ Analyze for buy/sell signals
 def analyze_trades(df, days_back=14, min_trades=3):
     cutoff = datetime.now() - timedelta(days=days_back)
-    df['transactionDate'] = pd.to_datetime(df['transactionDate'])
-    recent = df[df['transactionDate'] >= cutoff]
+    df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+    recent = df[df['transaction_date'] >= cutoff]
 
-    buys = recent[recent['transactionType'] == 'Purchase']
-    sells = recent[recent['transactionType'].str.contains('Sale')]
+    buys = recent[recent['transaction_type'] == 'Purchase']
+    sells = recent[recent['transaction_type'].str.contains('Sale')]
 
     buy_signals = buys['ticker'].value_counts()
     sell_signals = sells['ticker'].value_counts()
@@ -35,15 +44,15 @@ def analyze_trades(df, days_back=14, min_trades=3):
 
     return buy_hits, sell_hits, recent
 
-# ✅ Streamlit app UI
-st.set_page_config(page_title="Senate Stock Signals", layout="wide")
-st.title("🏛️ Senate Stock Buy/Sell Signals")
+# ✅ Streamlit UI
+st.set_page_config(page_title="House Stock Signals", layout="wide")
+st.title("🏛️ House Stock Buy/Sell Signals")
 
-df = fetch_senate_trades()
+df = fetch_house_trades()
 
 if not df.empty:
-    st.subheader("Recent Senate Trades")
-    st.dataframe(df[['senator', 'ticker', 'transactionType', 'transactionDate']], use_container_width=True)
+    st.subheader("Recent House Trades")
+    st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
 
     st.subheader("📊 Signal Detection")
     buys, sells, recent = analyze_trades(df)
