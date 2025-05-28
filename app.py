@@ -4,22 +4,30 @@ import requests
 
 # ---- PAGE CONFIG ---- #
 st.set_page_config(page_title="Crypto Signal Tracker", layout="wide")
-st.title("🚀 Crypto Signal Tracker - MultiChain Dashboard")
+st.title("🚀 Crypto Signal Tracker - Coinbase-Available Tokens")
 st.markdown("""
-Live tracking of trending tokens across Ethereum, Solana, and BSC based on:
+Live tracking of tradable tokens on Coinbase based on:
 - 🧠 Buzz (Social Hype)
-- 🔐 Safety (Liquidity Lock + Contract)
-- 📈 Momentum (Price & Volume)
+- 🔐 Safety (Market Cap Proxy)
+- 📈 Momentum (Price Change)
 - ⭐ Total Score (0–10)
 """)
 
-# ---- DATA FROM COINGECKO ---- #
+# ---- FETCH COINBASE LISTED TOKENS ---- #
+def get_coinbase_list():
+    url = "https://api.pro.coinbase.com/products"
+    response = requests.get(url)
+    product_ids = [item['base_currency'] for item in response.json() if item['quote_currency'] == 'USD']
+    return list(set(product_ids))
+
+# ---- FETCH MARKET DATA FROM COINGECKO ---- #
 def fetch_top_tokens():
+    coinbase_list = get_coinbase_list()
     url = "https://api.coingecko.com/api/v3/coins/markets"
     params = {
         "vs_currency": "usd",
         "order": "volume_desc",
-        "per_page": 100,
+        "per_page": 250,
         "page": 1,
         "sparkline": False
     }
@@ -27,18 +35,22 @@ def fetch_top_tokens():
     data = response.json()
     tokens = []
     for item in data:
+        symbol = item.get("symbol", "").upper()
+        if symbol not in coinbase_list:
+            continue
+
         buzz = item.get("price_change_percentage_24h", 0)
         buzz_score = round(min(max(buzz / 5 + 7, 0), 10), 2)
 
         market_cap = item.get("market_cap", 0)
-        safety_score = round(min((market_cap / 5e9) + 3, 10), 2)  # caps at $35B = 10
+        safety_score = round(min((market_cap / 5e9) + 3, 10), 2)
 
         momentum = abs(item.get("price_change_percentage_24h", 0))
         momentum_score = round(min(momentum / 5 + 6, 10), 2)
 
         tokens.append({
             "Token": item.get("name"),
-            "Chain": "Multi",  # Coingecko doesn’t specify chain directly
+            "Symbol": symbol,
             "Liquidity ($)": item.get("total_volume", 0),
             "Holders": (item.get("market_cap_rank") or 0) * 100,
             "24h Volume ($)": item.get("total_volume", 0),
@@ -58,6 +70,7 @@ min_score = st.sidebar.slider("Minimum Total Score", 0.0, 10.0, 7.5, step=0.1)
 
 # ---- MAIN DASHBOARD ---- #
 df = fetch_top_tokens()
+df = df.reset_index(drop=True)
 filtered_df = df[
     (df["Liquidity ($)"] >= min_liquidity) &
     (df["24h Volume ($)"] >= min_volume) &
@@ -70,3 +83,14 @@ st.dataframe(filtered_df, use_container_width=True)
 st.subheader("⭐ Watchlist")
 if "watchlist" not in st.session_state:
     st.session_state.watchlist = []
+
+add_token = st.selectbox("Add a token to your watchlist", df["Token"].unique())
+if st.button("➕ Add to Watchlist"):
+    if add_token not in st.session_state.watchlist:
+        st.session_state.watchlist.append(add_token)
+
+watchlist_df = df[df["Token"].isin(st.session_state.watchlist)].reset_index(drop=True)
+st.dataframe(watchlist_df, use_container_width=True)
+
+st.markdown("---")
+st.markdown("Built with ❤️ using Streamlit, CoinGecko, and Coinbase Pro APIs.")
