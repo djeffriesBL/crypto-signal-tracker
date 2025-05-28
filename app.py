@@ -36,8 +36,10 @@ def fetch_house_trades():
         st.warning(f"⚠️ Failed to fetch S3 data. Using mock data. Error: {e}")
         return load_mock_data()
 
-# 📊 Analyze trades (safe date handling)
+# 📊 Analyze trades with safe date handling
 def analyze_trades(df, days_back=14, min_trades=3):
+    df['transaction_date'] = df['transaction_date'].astype(str)
+    df = df[df['transaction_date'].str.len() <= 25]  # filter junk
     df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
     df = df.dropna(subset=['transaction_date'])
 
@@ -48,7 +50,7 @@ def analyze_trades(df, days_back=14, min_trades=3):
     sell_hits = sells['ticker'].value_counts()
     return buy_hits[buy_hits >= min_trades].index.tolist(), sell_hits[sell_hits >= min_trades].index.tolist(), recent
 
-# 📈 Clean price chart
+# 📈 Price chart with formatting
 def plot_price_chart(ticker, period="1mo", interval="1d"):
     try:
         data = yf.download(ticker, period=period, interval=interval)
