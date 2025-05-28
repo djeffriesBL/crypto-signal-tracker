@@ -33,15 +33,9 @@ def get_contract_address(token_id):
 # Fetch market data and calculate scores
 @st.cache_data
 def fetch_top_tokens_with_signals():
-    url = "https://api.coingecko.com/api/v3/coins/markets"
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": 100,
-        "page": 1,
-        "sparkline": False,
-        "price_change_percentage": "1h,24h"
-    }
-
-    response = requests.get(url, params=params)
-    tokens = res
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 100,_
