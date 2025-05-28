@@ -5,7 +5,7 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
-# Use mock data for now
+# 🧱 Load mock data
 def load_mock_data():
     return pd.DataFrame([
         {"representative": "John Doe", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-10"},
@@ -16,92 +16,117 @@ def load_mock_data():
         {"representative": "Mark Black", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-12"},
     ])
 
-def analyze_trades(df, days_back=14, min_trades=3):
-    cutoff = datetime.now() - timedelta(days=days_back)
-    df['transaction_date'] = pd.to_datetime(df['transaction_date'])
-    recent = df[df['transaction_date'] >= cutoff]
+# 🧱 Load live data with fallback
+@st.cache_data
+def fetch_house_trades():
+    url = "https://housestockwatcher.com/api/transactions"
+    try:
+        response = requests.get(url, timeout=10)
+        return pd.DataFrame(response.json())
+    except Exception:
+        return None
 
+# 🧠 Analyze trades
+def analyze_trades(df, days_back=14, min_trades=3):
+    df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+    recent = df[df['transaction_date'] >= (datetime.now() - timedelta(days=days_back))]
     buys = recent[recent['transaction_type'] == 'Purchase']
     sells = recent[recent['transaction_type'].str.contains('Sale')]
+    buy_hits = buys['ticker'].value_counts()
+    sell_hits = sells['ticker'].value_counts()
+    return buy_hits[buy_hits >= min_trades].index.tolist(), sell_hits[sell_hits >= min_trades].index.tolist(), recent
 
-    buy_signals = buys['ticker'].value_counts()
-    sell_signals = sells['ticker'].value_counts()
-
-    buy_hits = buy_signals[buy_signals >= min_trades].index.tolist()
-    sell_hits = sell_signals[sell_signals >= min_trades].index.tolist()
-
-    return buy_hits, sell_hits, recent
-
+# 📈 Price chart
 def plot_price_chart(ticker, period="1mo", interval="1d"):
     try:
         data = yf.download(ticker, period=period, interval=interval)
         if data.empty:
-            st.error(f"No price data available for {ticker}")
+            st.error(f"No data for {ticker}")
             return
         fig, ax = plt.subplots()
-        ax.plot(data.index, data['Close'], label="Close Price")
-        ax.set_title(f"{ticker} Price Chart ({period})")
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Price")
+        ax.plot(data.index, data['Close'], label="Close")
+        ax.set_title(f"{ticker} Price Chart")
         ax.legend()
         st.pyplot(fig)
     except Exception as e:
-        st.error(f"Error fetching chart for {ticker}: {e}")
+        st.error(f"Chart error for {ticker}: {e}")
 
-# App UI
+# 💰 Portfolio simulation
+def simulate_portfolio(df):
+    buys = df[df['transaction_type'] == 'Purchase']
+    portfolio = buys.groupby('ticker').filter(lambda x: len(x) >= 3)
+    results = []
+
+    for ticker in portfolio['ticker'].unique():
+        dates = portfolio[portfolio['ticker'] == ticker]['transaction_date']
+        avg_date = pd.to_datetime(dates).mean()
+        try:
+            hist = yf.download(ticker, start=avg_date.strftime('%Y-%m-%d'), end=datetime.now().strftime('%Y-%m-%d'))
+            if not hist.empty:
+                entry = hist.iloc[0]['Close']
+                latest = hist.iloc[-1]['Close']
+                ret = ((latest - entry) / entry) * 100
+                results.append({'Ticker': ticker, 'Avg Buy Date': avg_date.date(), 'Return (%)': round(ret, 2)})
+        except:
+            continue
+
+    return pd.DataFrame(results)
+
+# 🖥️ Streamlit App
 st.set_page_config(page_title="House Stock Tracker", layout="wide")
 st.title("🏛️ House Stock Buy/Sell Tracker")
 
-df = load_mock_data()
+# 📍 Select data source
+use_mock = st.toggle("Use mock data", value=True)
+if use_mock:
+    df = load_mock_data()
+else:
+    df = fetch_house_trades()
+    if df is None or df.empty:
+        st.warning("Live API unavailable. Reverting to mock data.")
+        df = load_mock_data()
 
+# Main outputs
 st.subheader("📋 Recent House Trades")
 st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
 
 st.subheader("📊 Signal Detection")
-buys, sells, recent = analyze_trades(df)
+buy_signals, sell_signals, recent = analyze_trades(df)
 st.markdown("### ✅ Strong Buy Signals")
-st.write(", ".join(buys) if buys else "No buy signals in past 14 days.")
+st.write(", ".join(buy_signals) if buy_signals else "No signals.")
 st.markdown("### ⚠️ Strong Sell Signals")
-st.write(", ".join(sells) if sells else "No sell signals in past 14 days.")
+st.write(", ".join(sell_signals) if sell_signals else "No signals.")
 
 st.subheader("📈 Live Price Chart")
 tickers = sorted(df["ticker"].dropna().unique())
-selected_ticker = st.selectbox("Select a ticker", tickers)
-if selected_ticker:
-    plot_price_chart(selected_ticker)
+selected = st.selectbox("Select ticker", tickers)
+if selected:
+    plot_price_chart(selected)
 
-# 🔥 Congressmember Leaderboard
 st.subheader("🏆 Congressmember Leaderboard")
 leaderboard = df.groupby('representative').agg(
     total_trades=('ticker', 'count'),
     buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
     sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
 ).reset_index()
-st.dataframe(leaderboard, use_container_width=True)
+st.dataframe(leaderboard)
 
-# 📊 Trade Volume Stats
 st.subheader("📦 Trade Volume by Ticker")
-volume_stats = df.groupby('ticker').agg(
-    total_trades=('transaction_type', 'count'),
+volumes = df.groupby('ticker').agg(
+    total=('transaction_type', 'count'),
     buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
     sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
 ).reset_index()
-
 fig, ax = plt.subplots()
-ax.bar(volume_stats['ticker'], volume_stats['buys'], label='Buys', color='green')
-ax.bar(volume_stats['ticker'], volume_stats['sells'], bottom=volume_stats['buys'], label='Sells', color='red')
-ax.set_ylabel("Trade Volume")
-ax.set_title("Total Trades by Ticker")
+ax.bar(volumes['ticker'], volumes['buys'], label='Buys', color='green')
+ax.bar(volumes['ticker'], volumes['sells'], bottom=volumes['buys'], label='Sells', color='red')
 ax.legend()
+ax.set_title("Trade Volume")
 st.pyplot(fig)
 
-# 💼 Simulated Portfolio Returns
 st.subheader("💼 Simulated Portfolio: Follow the Buys")
-portfolio = df[df['transaction_type'] == 'Purchase'].groupby('ticker').size().reset_index(name='count')
-portfolio = portfolio[portfolio['count'] >= 3]
-if not portfolio.empty:
-    portfolio['simulated_return_%'] = [12.5] * len(portfolio)  # Placeholder values
-    st.dataframe(portfolio, use_container_width=True)
-    st.markdown("_Simulates buying any stock with 3+ congressional buys in the last 14 days._")
+returns_df = simulate_portfolio(df)
+if not returns_df.empty:
+    st.dataframe(returns_df)
 else:
-    st.write("No qualifying buy clusters yet.")
+    st.write("No qualifying buy clusters.")
