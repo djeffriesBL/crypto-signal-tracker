@@ -1,109 +1,53 @@
 import streamlit as st
 import pandas as pd
 import requests
-import random
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Crypto Signal Tracker", layout="wide")
-st.title("🔥 Hot Coinbase-Listed Tokens with Early Signal Detection")
-
-# ✅ Safe Coinbase token fetch (with fallback)
+# Fetch trades from House Stock Watcher API
 @st.cache_data
-def get_coinbase_tradable_ids():
-    try:
-        response = requests.get("https://api.pro.coinbase.com/products")
-        data = response.json()
-        if isinstance(data, list):
-            return {item['base_currency'].upper() for item in data if 'base_currency' in item}
-        else:
-            st.warning("Unexpected Coinbase API response format — showing all tokens.")
-            return None  # fallback: don't filter if format is bad
-    except Exception as e:
-        st.warning("Coinbase API error: " + str(e) + " — showing all tokens.")
-        return None  # fallback: show all tokens if API fails
-
-# ✅ Contract address fetch for TokenSniffer
-@st.cache_data
-def get_contract_address(token_id):
-    try:
-        url = f"https://api.coingecko.com/api/v3/coins/{token_id}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("platforms", {}).get("ethereum", None)
-        return None
-    except Exception:
-        return None
-
-# ✅ Fetch + score tokens
-@st.cache_data
-def fetch_top_tokens_with_signals():
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 100,
-            "page": 1,
-            "sparkline": False,
-            "price_change_percentage": "1h,24h"
-        }
-
-        response = requests.get(url, params=params)
-        tokens = response.json()
-        coinbase_ids = get_coinbase_tradable_ids()
-        data = []
-
-        for item in tokens:
-            symbol = item.get("symbol", "").upper()
-            if coinbase_ids and symbol not in coinbase_ids:
-                continue
-
-            token_id = item.get("id", "")
-            contract = get_contract_address(token_id)
-            sniffer_link = f"https://tokensniffer.com/token/eth/{contract}" if contract else "N/A"
-
-            price_change_1h = item.get("price_change_percentage_1h_in_currency", 0)
-            price_change_24h = item.get("price_change_percentage_24h_in_currency", 0)
-            market_cap = item.get("market_cap", 1)
-            volume = item.get("total_volume", 0)
-            volume_to_marketcap = round(volume / market_cap, 4) if market_cap else 0
-
-            # Simulated social buzz
-            buzz_mentions = random.randint(10, 100)
-
-            # Score logic
-            buzz_score = round(min(max((price_change_1h / 2 + 5) + (buzz_mentions / 25), 0), 10), 2)
-            momentum_score = round(min(abs(price_change_24h) / 5 + 6, 10), 2)
-            safety_score = round(min((market_cap / 5e9) + 3, 10), 2)
-            total_score = round(0.3 * buzz_score + 0.3 * safety_score + 0.4 * momentum_score, 2)
-
-            data.append({
-                "Token": item.get("name"),
-                "Symbol": symbol,
-                "Price ($)": item.get("current_price"),
-                "Market Cap ($)": market_cap,
-                "Volume ($)": volume,
-                "Vol/MCap Ratio": volume_to_marketcap,
-                "Buzz Mentions": buzz_mentions,
-                "Buzz Score": buzz_score,
-                "Safety Score": safety_score,
-                "Momentum Score": momentum_score,
-                "Total Score": total_score,
-                "TokenSniffer": sniffer_link
-            })
-
-        return pd.DataFrame(data)
-    except Exception as e:
-        st.error("Error fetching or processing token data: " + str(e))
+def fetch_house_trades():
+    url = "https://housestockwatcher.com/api/transactions"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return pd.DataFrame(response.json())
+    else:
+        st.error("Failed to fetch congressional trade data.")
         return pd.DataFrame()
 
-# ✅ Run + display
-df = fetch_top_tokens_with_signals()
+# Analyze trades for buy/sell signals
+def analyze_trades(df, days_back=14, min_trades=3):
+    cutoff = datetime.now() - timedelta(days=days_back)
+    df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+    recent = df[df['transaction_date'] >= cutoff]
 
-if df.empty:
-    st.info("No tokens matched the criteria or data could not be loaded. Please try again later.")
+    buys = recent[recent['transaction_type'] == 'Purchase']
+    sells = recent[recent['transaction_type'] == 'Sale (Full)']
+
+    buy_signals = buys['ticker'].value_counts()
+    sell_signals = sells['ticker'].value_counts()
+
+    buy_hits = buy_signals[buy_signals >= min_trades].index.tolist()
+    sell_hits = sell_signals[sell_signals >= min_trades].index.tolist()
+
+    return buy_hits, sell_hits, recent
+
+# Streamlit interface
+st.set_page_config(page_title="Congressional Stock Signals", layout="wide")
+st.title("🏛️ Congressional Stock Buy/Sell Signals")
+
+df = fetch_house_trades()
+
+if not df.empty:
+    st.subheader("Recent Trades (Raw)")
+    st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
+
+    st.subheader("📊 Signal Detection")
+    buys, sells, recent = analyze_trades(df)
+
+    st.markdown("### ✅ Strong Buy Signals")
+    st.write(", ".join(buys) if buys else "No buy signals in past 14 days.")
+
+    st.markdown("### ⚠️ Strong Sell Signals")
+    st.write(", ".join(sells) if sells else "No sell signals in past 14 days.")
 else:
-    df = df[df["Total Score"] >= 7].sort_values(by="Total Score", ascending=False).reset_index(drop=True)
-    min_score = st.sidebar.slider("Minimum Total Score", 0.0, 10.0, 7.0, 0.1)
-    df_filtered = df[df["Total Score"] >= min_score]
-    st.dataframe(df_filtered, use_container_width=True)
+    st.warning("No trade data available.")
