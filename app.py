@@ -36,17 +36,28 @@ def analyze_trades(df, days_back=14, min_trades=3):
     sell_hits = sells['ticker'].value_counts()
     return buy_hits[buy_hits >= min_trades].index.tolist(), sell_hits[sell_hits >= min_trades].index.tolist(), recent
 
-# 📈 Price chart
+# 📈 Price chart (cleaner version)
 def plot_price_chart(ticker, period="1mo", interval="1d"):
     try:
         data = yf.download(ticker, period=period, interval=interval)
         if data.empty:
             st.error(f"No data for {ticker}")
             return
-        fig, ax = plt.subplots()
-        ax.plot(data.index, data['Close'], label="Close")
-        ax.set_title(f"{ticker} Price Chart")
+
+        fig, ax = plt.subplots(figsize=(8, 3.5))
+        ax.plot(data.index, data['Close'], label="Close", linewidth=2)
+        ax.set_title(f"{ticker} Price Chart", fontsize=14)
+        ax.set_xlabel("Date", fontsize=10)
+        ax.set_ylabel("Price", fontsize=10)
+        ax.tick_params(axis='x', labelsize=9)
+        ax.tick_params(axis='y', labelsize=9)
+
+        # Fix date formatting
+        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%b %d'))
+        plt.xticks(rotation=45)
         ax.legend()
+        fig.tight_layout()
+
         st.pyplot(fig)
     except Exception as e:
         st.error(f"Chart error for {ticker}: {e}")
@@ -117,7 +128,7 @@ volumes = df.groupby('ticker').agg(
     buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
     sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
 ).reset_index()
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(8, 3.5))
 ax.bar(volumes['ticker'], volumes['buys'], label='Buys', color='green')
 ax.bar(volumes['ticker'], volumes['sells'], bottom=volumes['buys'], label='Sells', color='red')
 ax.legend()
@@ -130,3 +141,4 @@ if not returns_df.empty:
     st.dataframe(returns_df)
 else:
     st.write("No qualifying buy clusters.")
+
