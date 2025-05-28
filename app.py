@@ -3,18 +3,20 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 
-# Fetch trades from House Stock Watcher API
+# ✅ Fetch trades from House Stock Watcher with error handling
 @st.cache_data
 def fetch_house_trades():
     url = "https://housestockwatcher.com/api/transactions"
     response = requests.get(url)
-    if response.status_code == 200:
-        return pd.DataFrame(response.json())
-    else:
-        st.error("Failed to fetch congressional trade data.")
+
+    try:
+        data = response.json()
+        return pd.DataFrame(data)
+    except ValueError:
+        st.error("API response was not valid JSON. Try again later.")
         return pd.DataFrame()
 
-# Analyze trades for buy/sell signals
+# ✅ Analyze trades for buy/sell signals
 def analyze_trades(df, days_back=14, min_trades=3):
     cutoff = datetime.now() - timedelta(days=days_back)
     df['transaction_date'] = pd.to_datetime(df['transaction_date'])
@@ -31,7 +33,7 @@ def analyze_trades(df, days_back=14, min_trades=3):
 
     return buy_hits, sell_hits, recent
 
-# Streamlit interface
+# ✅ Streamlit app UI
 st.set_page_config(page_title="Congressional Stock Signals", layout="wide")
 st.title("🏛️ Congressional Stock Buy/Sell Signals")
 
