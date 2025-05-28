@@ -5,7 +5,7 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
-# ✅ Fallback mock data
+# ✅ Use mock data only (for now)
 def load_mock_data():
     mock = [
         {"representative": "John Doe", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-10"},
@@ -16,19 +16,6 @@ def load_mock_data():
         {"representative": "Mark Black", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-12"},
     ]
     return pd.DataFrame(mock)
-
-# ✅ Fetch trades from HouseStockWatcher or fallback
-@st.cache_data
-def fetch_house_trades():
-    url = "https://housestockwatcher.com/api/transactions"
-    try:
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        return pd.DataFrame(data)
-    except Exception as e:
-        st.warning("⚠️ Live API not returning valid data — using mock dataset.")
-        st.caption(f"Error: {e}")
-        return load_mock_data()
 
 # ✅ Analyze trades
 def analyze_trades(df, days_back=14, min_trades=3):
@@ -69,24 +56,22 @@ def plot_price_chart(ticker, period="1mo", interval="1d"):
 st.set_page_config(page_title="House Stock Signals", layout="wide")
 st.title("🏛️ House Stock Buy/Sell Signals")
 
-df = fetch_house_trades()
+# Always use mock for now
+df = load_mock_data()
 
-if not df.empty:
-    st.subheader("📋 Recent House Trades")
-    st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
+st.subheader("📋 Recent House Trades")
+st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
 
-    st.subheader("📊 Signal Detection")
-    buys, sells, recent = analyze_trades(df)
-    st.markdown("### ✅ Strong Buy Signals")
-    st.write(", ".join(buys) if buys else "No buy signals in past 14 days.")
-    st.markdown("### ⚠️ Strong Sell Signals")
-    st.write(", ".join(sells) if sells else "No sell signals in past 14 days.")
+st.subheader("📊 Signal Detection")
+buys, sells, recent = analyze_trades(df)
+st.markdown("### ✅ Strong Buy Signals")
+st.write(", ".join(buys) if buys else "No buy signals in past 14 days.")
+st.markdown("### ⚠️ Strong Sell Signals")
+st.write(", ".join(sells) if sells else "No sell signals in past 14 days.")
 
-    # ✅ Show live price chart
-    st.subheader("📈 Live Price Chart")
-    tickers = sorted(df["ticker"].dropna().unique())
-    selected_ticker = st.selectbox("Select a ticker", tickers)
-    if selected_ticker:
-        plot_price_chart(selected_ticker)
-else:
-    st.warning("No trade data available.")
+# ✅ Live Price Chart always available now
+st.subheader("📈 Live Price Chart")
+tickers = sorted(df["ticker"].dropna().unique())
+selected_ticker = st.selectbox("Select a ticker", tickers)
+if selected_ticker:
+    plot_price_chart(selected_ticker)
