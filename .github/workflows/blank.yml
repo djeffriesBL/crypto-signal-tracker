@@ -1,0 +1,70 @@
+import streamlit as st
+import pandas as pd
+import random
+
+# ---- PAGE CONFIG ---- #
+st.set_page_config(page_title="Crypto Signal Tracker", layout="wide")
+st.title("🚀 Crypto Signal Tracker - MultiChain Dashboard")
+st.markdown("""
+Easily filter promising new tokens across Ethereum, Solana, and BSC based on:
+- 🧠 Buzz (Social Hype)
+- 🔐 Safety (Liquidity Lock + Contract)
+- 📈 Momentum (Price & Volume)
+- ⭐ Total Score
+""")
+
+# ---- MOCK DATA GENERATION ---- #
+def generate_mock_data():
+    chains = ["Ethereum", "Solana", "BSC"]
+    tokens = ["XINU", "PepeWifHat", "MoonDAO", "DegenGPT", "CatFi", "RugDodger", "AIShiba", "VoteCoin", "SnackToken"]
+    data = []
+    for token in tokens:
+        data.append({
+            "Token": token,
+            "Chain": random.choice(chains),
+            "Liquidity ($)": random.randint(30000, 150000),
+            "Holders": random.randint(500, 5000),
+            "24h Volume ($)": random.randint(50000, 400000),
+            "Buzz Score": round(random.uniform(5, 10), 2),
+            "Safety Score": round(random.uniform(4, 10), 2),
+            "Momentum Score": round(random.uniform(5, 10), 2),
+        })
+    df = pd.DataFrame(data)
+    df["Total Score"] = 0.3 * df["Buzz Score"] + 0.3 * df["Safety Score"] + 0.4 * df["Momentum Score"]
+    return df.sort_values(by="Total Score", ascending=False)
+
+# ---- SIDEBAR FILTERS ---- #
+st.sidebar.header("🔎 Filters")
+min_liquidity = st.sidebar.slider("Minimum Liquidity ($)", 0, 150000, 50000, step=10000)
+min_volume = st.sidebar.slider("Minimum 24h Volume ($)", 0, 400000, 100000, step=25000)
+chain_filter = st.sidebar.multiselect("Select Chains", ["Ethereum", "Solana", "BSC"], default=["Ethereum", "Solana", "BSC"])
+min_score = st.sidebar.slider("Minimum Total Score", 0.0, 10.0, 7.5, step=0.1)
+
+# ---- MAIN DASHBOARD ---- #
+df = generate_mock_data()
+filtered_df = df[
+    (df["Liquidity ($)"] >= min_liquidity) &
+    (df["24h Volume ($)"] >= min_volume) &
+    (df["Chain"].isin(chain_filter)) &
+    (df["Total Score"] >= min_score)
+]
+
+st.dataframe(filtered_df, use_container_width=True)
+
+# ---- WATCHLIST (Session State) ---- #
+st.subheader("⭐ Watchlist")
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = []
+
+add_token = st.selectbox("Add a token to your watchlist", df["Token"].unique())
+if st.button("➕ Add to Watchlist"):
+    if add_token not in st.session_state.watchlist:
+        st.session_state.watchlist.append(add_token)
+
+watchlist_df = df[df["Token"].isin(st.session_state.watchlist)]
+st.dataframe(watchlist_df, use_container_width=True)
+
+st.markdown("---")
+st.markdown("Built with ❤️ using Streamlit. Live API data coming soon.")
+
+
