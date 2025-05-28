@@ -6,7 +6,7 @@ import random
 st.set_page_config(page_title="Crypto Signal Tracker", layout="wide")
 st.title("🔥 Hot Coinbase-Listed Tokens with Early Signal Detection")
 
-# ✅ Safe Coinbase token fetch
+# ✅ Safe Coinbase token fetch (with fallback)
 @st.cache_data
 def get_coinbase_tradable_ids():
     try:
@@ -15,11 +15,11 @@ def get_coinbase_tradable_ids():
         if isinstance(data, list):
             return {item['base_currency'].upper() for item in data if 'base_currency' in item}
         else:
-            st.warning("Unexpected Coinbase API response format.")
-            return set()
+            st.warning("Unexpected Coinbase API response format — showing all tokens.")
+            return None  # fallback: don't filter if format is bad
     except Exception as e:
-        st.warning("Coinbase API error: " + str(e))
-        return set()
+        st.warning("Coinbase API error: " + str(e) + " — showing all tokens.")
+        return None  # fallback: show all tokens if API fails
 
 # ✅ Contract address fetch for TokenSniffer
 @st.cache_data
@@ -55,7 +55,7 @@ def fetch_top_tokens_with_signals():
 
         for item in tokens:
             symbol = item.get("symbol", "").upper()
-            if symbol not in coinbase_ids:
+            if coinbase_ids and symbol not in coinbase_ids:
                 continue
 
             token_id = item.get("id", "")
