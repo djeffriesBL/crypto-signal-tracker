@@ -15,16 +15,20 @@ def load_mock_data():
     ]
     return pd.DataFrame(mock)
 
-# ✅ Fetch trades from HouseStockWatcher or fallback
+# ✅ Fetch trades from HouseStockWatcher or fallback to mock
 @st.cache_data
 def fetch_house_trades():
     url = "https://housestockwatcher.com/api/transactions"
     try:
         response = requests.get(url, timeout=10)
+        st.caption(f"📡 API Status: {response.status_code}")
+        # Uncomment to debug content:
+        # st.code(response.text[:500])
         data = response.json()
         return pd.DataFrame(data)
-    except Exception:
+    except Exception as e:
         st.warning("⚠️ Live API not returning valid data — using mock dataset.")
+        st.caption(f"Error: {e}")
         return load_mock_data()
 
 # ✅ Analyze for buy/sell signals
@@ -51,7 +55,7 @@ st.title("🏛️ House Stock Buy/Sell Signals")
 df = fetch_house_trades()
 
 if not df.empty:
-    st.subheader("Recent House Trades")
+    st.subheader("📋 Recent House Trades")
     st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
 
     st.subheader("📊 Signal Detection")
