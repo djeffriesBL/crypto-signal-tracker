@@ -16,17 +16,19 @@ def load_mock_data():
         {"representative": "Mark Black", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-12"},
     ])
 
-# 🧱 Load live data with fallback
+# ✅ Live data from S3 bucket fallback
 @st.cache_data
 def fetch_house_trades():
-    url = "https://housestockwatcher.com/api/transactions"
+    url = "https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json"
     try:
         response = requests.get(url, timeout=10)
-        return pd.DataFrame(response.json())
-    except Exception:
-        return None
+        data = response.json()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.warning(f"⚠️ Failed to fetch S3 data. Using mock data. Error: {e}")
+        return load_mock_data()
 
-# 🧠 Analyze trades
+# 📊 Analyze trades
 def analyze_trades(df, days_back=14, min_trades=3):
     df['transaction_date'] = pd.to_datetime(df['transaction_date'])
     recent = df[df['transaction_date'] >= (datetime.now() - timedelta(days=days_back))]
@@ -36,7 +38,7 @@ def analyze_trades(df, days_back=14, min_trades=3):
     sell_hits = sells['ticker'].value_counts()
     return buy_hits[buy_hits >= min_trades].index.tolist(), sell_hits[sell_hits >= min_trades].index.tolist(), recent
 
-# 📈 Price chart (cleaner version)
+# 📈 Clean price chart
 def plot_price_chart(ticker, period="1mo", interval="1d"):
     try:
         data = yf.download(ticker, period=period, interval=interval)
@@ -51,8 +53,6 @@ def plot_price_chart(ticker, period="1mo", interval="1d"):
         ax.set_ylabel("Price", fontsize=10)
         ax.tick_params(axis='x', labelsize=9)
         ax.tick_params(axis='y', labelsize=9)
-
-        # Fix date formatting
         ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%b %d'))
         plt.xticks(rotation=45)
         ax.legend()
@@ -62,7 +62,7 @@ def plot_price_chart(ticker, period="1mo", interval="1d"):
     except Exception as e:
         st.error(f"Chart error for {ticker}: {e}")
 
-# 💰 Portfolio simulation
+# 💼 Portfolio simulation
 def simulate_portfolio(df):
     buys = df[df['transaction_type'] == 'Purchase']
     portfolio = buys.groupby('ticker').filter(lambda x: len(x) >= 3)
@@ -83,37 +83,34 @@ def simulate_portfolio(df):
 
     return pd.DataFrame(results)
 
-# 🖥️ Streamlit App
+# 🎛️ App Layout
 st.set_page_config(page_title="House Stock Tracker", layout="wide")
 st.title("🏛️ House Stock Buy/Sell Tracker")
 
-# 📍 Select data source
-use_mock = st.toggle("Use mock data", value=True)
-if use_mock:
-    df = load_mock_data()
-else:
-    df = fetch_house_trades()
-    if df is None or df.empty:
-        st.warning("Live API unavailable. Reverting to mock data.")
-        df = load_mock_data()
+# Toggle between live/mock
+use_mock = st.toggle("Use mock data", value=False)
+df = load_mock_data() if use_mock else fetch_house_trades()
 
-# Main outputs
+# UI - Data
 st.subheader("📋 Recent House Trades")
 st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
 
+# UI - Signal Detection
 st.subheader("📊 Signal Detection")
 buy_signals, sell_signals, recent = analyze_trades(df)
 st.markdown("### ✅ Strong Buy Signals")
-st.write(", ".join(buy_signals) if buy_signals else "No signals.")
+st.write(", ".join(buy_signals) if buy_signals else "No buy signals")
 st.markdown("### ⚠️ Strong Sell Signals")
-st.write(", ".join(sell_signals) if sell_signals else "No signals.")
+st.write(", ".join(sell_signals) if sell_signals else "No sell signals")
 
+# UI - Price Chart
 st.subheader("📈 Live Price Chart")
 tickers = sorted(df["ticker"].dropna().unique())
 selected = st.selectbox("Select ticker", tickers)
 if selected:
     plot_price_chart(selected)
 
+# UI - Leaderboard
 st.subheader("🏆 Congressmember Leaderboard")
 leaderboard = df.groupby('representative').agg(
     total_trades=('ticker', 'count'),
@@ -122,6 +119,7 @@ leaderboard = df.groupby('representative').agg(
 ).reset_index()
 st.dataframe(leaderboard)
 
+# UI - Trade Volume Chart
 st.subheader("📦 Trade Volume by Ticker")
 volumes = df.groupby('ticker').agg(
     total=('transaction_type', 'count'),
@@ -135,10 +133,10 @@ ax.legend()
 ax.set_title("Trade Volume")
 st.pyplot(fig)
 
+# UI - Portfolio Simulation
 st.subheader("💼 Simulated Portfolio: Follow the Buys")
 returns_df = simulate_portfolio(df)
 if not returns_df.empty:
     st.dataframe(returns_df)
 else:
     st.write("No qualifying buy clusters.")
-
