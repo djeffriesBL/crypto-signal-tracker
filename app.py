@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 
-# ✅ Fallback sample data
+# ✅ Fallback mock data
 def load_mock_data():
     mock = [
         {"representative": "John Doe", "ticker": "AAPL", "transaction_type": "Purchase", "transaction_date": "2024-05-10"},
@@ -15,19 +15,19 @@ def load_mock_data():
     ]
     return pd.DataFrame(mock)
 
-# ✅ Fetch real data if possible
+# ✅ Fetch from API or fallback
 @st.cache_data
 def fetch_house_trades():
     url = "https://housestockwatcher.com/api/transactions"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         data = response.json()
         return pd.DataFrame(data)
     except Exception:
         st.warning("⚠️ Live API not returning valid data — using mock dataset.")
         return load_mock_data()
 
-# ✅ Buy/Sell analysis logic
+# ✅ Trade signal logic
 def analyze_trades(df, days_back=14, min_trades=3):
     cutoff = datetime.now() - timedelta(days=days_back)
     df['transaction_date'] = pd.to_datetime(df['transaction_date'])
@@ -44,7 +44,7 @@ def analyze_trades(df, days_back=14, min_trades=3):
 
     return buy_hits, sell_hits, recent
 
-# ✅ Streamlit dashboard
+# ✅ Streamlit UI
 st.set_page_config(page_title="Congressional Stock Signals", layout="wide")
 st.title("🏛️ Congressional Stock Buy/Sell Signals")
 
