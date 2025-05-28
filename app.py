@@ -6,7 +6,7 @@ import random
 st.set_page_config(page_title="Crypto Signal Tracker", layout="wide")
 st.title("🔥 Hot Coinbase-Listed Tokens with Early Signal Detection")
 
-# Fetch tradable tokens from Coinbase Pro
+# ✅ Safe Coinbase token fetch
 @st.cache_data
 def get_coinbase_tradable_ids():
     try:
@@ -21,7 +21,7 @@ def get_coinbase_tradable_ids():
         st.warning("Coinbase API error: " + str(e))
         return set()
 
-# Fetch contract addresses from CoinGecko (for TokenSniffer links)
+# ✅ Contract address fetch for TokenSniffer
 @st.cache_data
 def get_contract_address(token_id):
     try:
@@ -34,7 +34,7 @@ def get_contract_address(token_id):
     except Exception:
         return None
 
-# Fetch market data and calculate scores
+# ✅ Fetch + score tokens
 @st.cache_data
 def fetch_top_tokens_with_signals():
     try:
@@ -68,10 +68,10 @@ def fetch_top_tokens_with_signals():
             volume = item.get("total_volume", 0)
             volume_to_marketcap = round(volume / market_cap, 4) if market_cap else 0
 
-            # Simulated social buzz score
+            # Simulated social buzz
             buzz_mentions = random.randint(10, 100)
 
-            # Calculate normalized scores
+            # Score logic
             buzz_score = round(min(max((price_change_1h / 2 + 5) + (buzz_mentions / 25), 0), 10), 2)
             momentum_score = round(min(abs(price_change_24h) / 5 + 6, 10), 2)
             safety_score = round(min((market_cap / 5e9) + 3, 10), 2)
@@ -97,7 +97,7 @@ def fetch_top_tokens_with_signals():
         st.error("Error fetching or processing token data: " + str(e))
         return pd.DataFrame()
 
-# Run everything
+# ✅ Run + display
 df = fetch_top_tokens_with_signals()
 
 if df.empty:
