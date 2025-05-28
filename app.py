@@ -31,7 +31,7 @@ def fetch_top_tokens():
             "Token": item.get("name"),
             "Chain": "Multi",  # Coingecko doesn’t specify chain directly
             "Liquidity ($)": item.get("total_volume", 0),
-            "Holders": item.get("market_cap_rank", 0) * 100,  # proxy
+            "Holders": (item.get("market_cap_rank") or 0) * 100,  # proxy
             "24h Volume ($)": item.get("total_volume", 0),
             "Buzz Score": round(item.get("price_change_percentage_24h", 0) / 5 + 7, 2),
             "Safety Score": round((item.get("market_cap", 0) / 1e9) + 6, 2),
