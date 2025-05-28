@@ -36,9 +36,11 @@ def fetch_house_trades():
         st.warning(f"⚠️ Failed to fetch S3 data. Using mock data. Error: {e}")
         return load_mock_data()
 
-# 📊 Analyze trades
+# 📊 Analyze trades (safe date handling)
 def analyze_trades(df, days_back=14, min_trades=3):
-    df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+    df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
+    df = df.dropna(subset=['transaction_date'])
+
     recent = df[df['transaction_date'] >= (datetime.now() - timedelta(days=days_back))]
     buys = recent[recent['transaction_type'] == 'Purchase']
     sells = recent[recent['transaction_type'].str.contains('Sale')]
@@ -78,7 +80,7 @@ def simulate_portfolio(df):
 
     for ticker in portfolio['ticker'].unique():
         dates = portfolio[portfolio['ticker'] == ticker]['transaction_date']
-        avg_date = pd.to_datetime(dates).mean()
+        avg_date = pd.to_datetime(dates, errors='coerce').dropna().mean()
         try:
             hist = yf.download(ticker, start=avg_date.strftime('%Y-%m-%d'), end=datetime.now().strftime('%Y-%m-%d'))
             if not hist.empty:
