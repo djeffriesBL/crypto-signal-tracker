@@ -16,14 +16,22 @@ def load_mock_data():
         {"representative": "Mark Black", "ticker": "TSLA", "transaction_type": "Sale (Full)", "transaction_date": "2024-05-12"},
     ])
 
-# ✅ Live data from S3 bucket fallback
+# ✅ Live data from S3 with column renaming
 @st.cache_data
 def fetch_house_trades():
     url = "https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json"
     try:
         response = requests.get(url, timeout=10)
         data = response.json()
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+
+        # Rename S3 fields to expected names
+        df = df.rename(columns={
+            'politician': 'representative',
+            'type': 'transaction_type'
+        })
+
+        return df
     except Exception as e:
         st.warning(f"⚠️ Failed to fetch S3 data. Using mock data. Error: {e}")
         return load_mock_data()
@@ -93,7 +101,11 @@ df = load_mock_data() if use_mock else fetch_house_trades()
 
 # UI - Data
 st.subheader("📋 Recent House Trades")
-st.dataframe(df[['representative', 'ticker', 'transaction_type', 'transaction_date']], use_container_width=True)
+required_cols = ['representative', 'ticker', 'transaction_type', 'transaction_date']
+if all(col in df.columns for col in required_cols):
+    st.dataframe(df[required_cols], use_container_width=True)
+else:
+    st.warning("Some required columns are missing from the dataset.")
 
 # UI - Signal Detection
 st.subheader("📊 Signal Detection")
@@ -112,26 +124,28 @@ if selected:
 
 # UI - Leaderboard
 st.subheader("🏆 Congressmember Leaderboard")
-leaderboard = df.groupby('representative').agg(
-    total_trades=('ticker', 'count'),
-    buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
-    sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
-).reset_index()
-st.dataframe(leaderboard)
+if 'representative' in df.columns:
+    leaderboard = df.groupby('representative').agg(
+        total_trades=('ticker', 'count'),
+        buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
+        sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
+    ).reset_index()
+    st.dataframe(leaderboard)
 
 # UI - Trade Volume Chart
 st.subheader("📦 Trade Volume by Ticker")
-volumes = df.groupby('ticker').agg(
-    total=('transaction_type', 'count'),
-    buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
-    sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
-).reset_index()
-fig, ax = plt.subplots(figsize=(8, 3.5))
-ax.bar(volumes['ticker'], volumes['buys'], label='Buys', color='green')
-ax.bar(volumes['ticker'], volumes['sells'], bottom=volumes['buys'], label='Sells', color='red')
-ax.legend()
-ax.set_title("Trade Volume")
-st.pyplot(fig)
+if 'ticker' in df.columns:
+    volumes = df.groupby('ticker').agg(
+        total=('transaction_type', 'count'),
+        buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
+        sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
+    ).reset_index()
+    fig, ax = plt.subplots(figsize=(8, 3.5))
+    ax.bar(volumes['ticker'], volumes['buys'], label='Buys', color='green')
+    ax.bar(volumes['ticker'], volumes['sells'], bottom=volumes['buys'], label='Sells', color='red')
+    ax.legend()
+    ax.set_title("Trade Volume")
+    st.pyplot(fig)
 
 # UI - Portfolio Simulation
 st.subheader("💼 Simulated Portfolio: Follow the Buys")
