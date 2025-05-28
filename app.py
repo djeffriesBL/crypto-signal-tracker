@@ -10,7 +10,7 @@ Live tracking of trending tokens across Ethereum, Solana, and BSC based on:
 - 🧠 Buzz (Social Hype)
 - 🔐 Safety (Liquidity Lock + Contract)
 - 📈 Momentum (Price & Volume)
-- ⭐ Total Score
+- ⭐ Total Score (0–10)
 """)
 
 # ---- DATA FROM COINGECKO ---- #
@@ -27,15 +27,24 @@ def fetch_top_tokens():
     data = response.json()
     tokens = []
     for item in data:
+        buzz = item.get("price_change_percentage_24h", 0)
+        buzz_score = round(min(max(buzz / 5 + 7, 0), 10), 2)
+
+        market_cap = item.get("market_cap", 0)
+        safety_score = round(min((market_cap / 5e9) + 3, 10), 2)  # caps at $35B = 10
+
+        momentum = abs(item.get("price_change_percentage_24h", 0))
+        momentum_score = round(min(momentum / 5 + 6, 10), 2)
+
         tokens.append({
             "Token": item.get("name"),
             "Chain": "Multi",  # Coingecko doesn’t specify chain directly
             "Liquidity ($)": item.get("total_volume", 0),
-            "Holders": (item.get("market_cap_rank") or 0) * 100,  # proxy
+            "Holders": (item.get("market_cap_rank") or 0) * 100,
             "24h Volume ($)": item.get("total_volume", 0),
-            "Buzz Score": round(item.get("price_change_percentage_24h", 0) / 5 + 7, 2),
-            "Safety Score": round((item.get("market_cap", 0) / 1e9) + 6, 2),
-            "Momentum Score": round(abs(item.get("price_change_percentage_24h", 0)) / 5 + 6, 2)
+            "Buzz Score": buzz_score,
+            "Safety Score": safety_score,
+            "Momentum Score": momentum_score
         })
     df = pd.DataFrame(tokens)
     df["Total Score"] = 0.3 * df["Buzz Score"] + 0.3 * df["Safety Score"] + 0.4 * df["Momentum Score"]
@@ -59,16 +68,4 @@ st.dataframe(filtered_df, use_container_width=True)
 
 # ---- WATCHLIST (Session State) ---- #
 st.subheader("⭐ Watchlist")
-if "watchlist" not in st.session_state:
-    st.session_state.watchlist = []
-
-add_token = st.selectbox("Add a token to your watchlist", df["Token"].unique())
-if st.button("➕ Add to Watchlist"):
-    if add_token not in st.session_state.watchlist:
-        st.session_state.watchlist.append(add_token)
-
-watchlist_df = df[df["Token"].isin(st.session_state.watchlist)]
-st.dataframe(watchlist_df, use_container_width=True)
-
-st.markdown("---")
-st.markdown("Built with ❤️ using Streamlit and real-time data from CoinGecko.")
+if "watchlist" not in st.sessio
