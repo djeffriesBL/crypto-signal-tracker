@@ -69,4 +69,4 @@ st.dataframe(filtered_df, use_container_width=True)
 # ---- WATCHLIST (Session State) ---- #
 st.subheader("⭐ Watchlist")
 if "watchlist" not in st.session_state:
-
+    st.session_state.watchlist = []
