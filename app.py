@@ -12,7 +12,11 @@ def get_coinbase_tradable_ids():
     try:
         response = requests.get("https://api.pro.coinbase.com/products")
         data = response.json()
-        return {item['base_currency'] for item in data}
+        if isinstance(data, list):
+            return {item['base_currency'].upper() for item in data if 'base_currency' in item}
+        else:
+            st.warning("Unexpected Coinbase API response format.")
+            return set()
     except Exception as e:
         st.warning("Coinbase API error: " + str(e))
         return set()
