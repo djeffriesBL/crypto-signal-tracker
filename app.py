@@ -95,15 +95,17 @@ st.write(", ".join(buy_signals) if buy_signals else "No buy signals")
 st.markdown("### ⚠️ Strong Sell Signals")
 st.write(", ".join(sell_signals) if sell_signals else "No sell signals")
 
-# UI - Leaderboard
-st.subheader("🏆 Congressmember Leaderboard")
-if 'representative' in df.columns:
-    leaderboard = df.groupby('representative').agg(
-        total_trades=('ticker', 'count'),
-        buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
-        sells=('transaction_type', lambda x: x.str.contains('Sale').sum())
-    ).reset_index()
-    st.dataframe(leaderboard)
+# 🏆 Congressmember Leaderboard (Past 30 Days)
+st.subheader("🏆 Congressmember Leaderboard (Past 30 Days)")
+df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
+recent_leaderboard_df = df[df['transaction_date'] >= (datetime.now() - timedelta(days=30))]
+leaderboard = recent_leaderboard_df.groupby('representative').agg(
+    total_trades=('ticker', 'count'),
+    buys=('transaction_type', lambda x: (x == 'Purchase').sum()),
+    sells=('transaction_type', lambda x: x.str.contains('Sale').sum()),
+    last_trade=('transaction_date', 'max')
+).reset_index().sort_values(by='total_trades', ascending=False)
+st.dataframe(leaderboard)
 
 # UI - Trade Volume Chart
 st.subheader("📦 Trade Volume by Ticker")
