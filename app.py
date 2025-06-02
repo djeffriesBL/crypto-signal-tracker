@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 # ----------------------------------
 
 # 1) Alpha Vantage API key for price lookups
-ALPHA_VANTAGE_KEY = "YOUR_ALPHA_VANTAGE_KEY_HERE"
+ALPHA_VANTAGE_KEY = "0IHUC0FIX7RZSUHH"
 
 # 2) Local CSV filename for insider data
 INSIDER_CSV = "insider_buys.csv"
