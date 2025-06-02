@@ -10,43 +10,49 @@ from datetime import datetime, timedelta
 # ------------------------------
 
 def load_mock_data():
-    """Fallback mock CSV (last 3 days, >$10K) saved as 'insider_buys.csv'."""
+    """Fallback mock CSV (last 3 days, >$10K) saved locally as 'insider_buys.csv'."""
     try:
-        return pd.read_csv("insider_buys.csv")
+        df = pd.read_csv("insider_buys.csv")
     except FileNotFoundError:
-        # If no local CSV, just return empty
-        return pd.DataFrame()
+        # If no local CSV, return empty DataFrame
+        df = pd.DataFrame()
+    return df
 
 @st.cache_data(ttl=3600)
 def fetch_insider_data(use_mock: bool, days_back: int, min_value: int):
     """
     If use_mock=True, load local CSV.
     Otherwise, attempt to fetch from OpenInsider URL (last N days, > min_value).
+    On failure, cleanly fall back to mock without showing raw traceback.
     """
     if use_mock:
-        df = load_mock_data()
-    else:
-        # Construct the OpenInsider CSV URL for last 'days_back' days, buys > 'min_value'
-        url = (
-            f"https://openinsider.com/screener.csv?"
-            f"s=&o=&pl=&ph=&ll=&lh=&fd=0&td=0"
-            f"&daysago={days_back}&xp=1&vl={min_value}&vh=&sortcol=0&maxresults=1000"
-        )
-        try:
-            df = pd.read_csv(url)
-        except Exception as e:
-            st.error(f"Failed to fetch live insider data: {e}")
-            df = load_mock_data()
-    # Standardize column names and filter only Purchase rows
+        return load_mock_data()
+
+    # Build the OpenInsider CSV URL for last 'days_back' days, buys > 'min_value'
+    url = (
+        f"https://openinsider.com/screener.csv?"
+        f"s=&o=&pl=&ph=&ll=&lh=&fd=0&td=0"
+        f"&daysago={days_back}&xp=1&vl={min_value}&vh=&sortcol=0&maxresults=1000"
+    )
+    try:
+        df = pd.read_csv(url)
+    except Exception:
+        # Suppress the raw exception; show only a simple warning
+        st.warning("⚠️ Could not fetch live insider data. Reverting to mock dataset.")
+        return load_mock_data()
+
+    # Standardize column names & filter only “Purchase”
     if "Trade Type" in df.columns:
         df = df.rename(columns={"Trade Type": "Trade_Type"})
     if "Ticker" in df.columns and "Trade_Type" in df.columns:
         df = df[df["Trade_Type"] == "Purchase"].copy()
+
     # Parse dates
     if "Trade Date" in df.columns:
         df["Trade Date"] = pd.to_datetime(df["Trade Date"], errors="coerce")
     if "Filing Date" in df.columns:
         df["Filing Date"] = pd.to_datetime(df["Filing Date"], errors="coerce")
+
     return df
 
 # ------------------------------
@@ -74,15 +80,16 @@ def get_filings_for_ticker(df, ticker: str):
 
 def simulate_returns_for_ticker(df_filings):
     """
-    Given all filings for a single ticker (>=1 rows), compute average trade date,
+    Given filings for a single ticker, compute average trade date,
     fetch price at that date and current price, and return a DataFrame with Return (%).
     """
     if df_filings.empty or "Trade Date" not in df_filings.columns:
         return pd.DataFrame()
     avg_date = df_filings["Trade Date"].dropna().mean().date()
+    ticker = df_filings["Ticker"].iloc[0]
     try:
         hist = yf.download(
-            df_filings["Ticker"].iloc[0],
+            ticker,
             start=avg_date.strftime("%Y-%m-%d"),
             end=datetime.now().strftime("%Y-%m-%d"),
             progress=False,
@@ -93,7 +100,7 @@ def simulate_returns_for_ticker(df_filings):
         latest = hist["Close"].iloc[-1]
         ret_pct = ((latest - entry) / entry) * 100
         return pd.DataFrame([{
-            "Ticker": df_filings["Ticker"].iloc[0],
+            "Ticker": ticker,
             "Avg_Trade_Date": avg_date,
             "Entry_Price": round(entry, 2),
             "Latest_Price": round(latest, 2),
@@ -109,13 +116,14 @@ def simulate_returns_for_ticker(df_filings):
 st.set_page_config(page_title="Insider‐Driven Stock Dashboard", layout="wide")
 st.title("🏛️ Insider‐Driven Stock Dashboard")
 
+# Sidebar controls
 with st.sidebar:
     st.header("⚙️ Settings")
     use_mock = st.checkbox("Use mock data (local CSV)", value=True)
     days_back = st.slider("Insider filings window (days)", 1, 30, 3)
     min_value = st.number_input("Min Buy Value ($)", min_value=1000, max_value=1_000_000, value=10000, step=1000)
 
-# 1) Load insider data
+# 1) Load insider data (mock or live)
 df_insiders = fetch_insider_data(use_mock, days_back, min_value)
 
 # 2) Show raw filings table
@@ -123,7 +131,7 @@ st.subheader("📋 Recent Insider Purchases")
 if df_insiders.empty:
     st.warning("No insider purchase records in this window.")
 else:
-    # Show table, most‐recent first
+    # Show table with most recent first if “Trade Date” exists
     if "Trade Date" in df_insiders.columns:
         df_insiders = df_insiders.sort_values("Trade Date", ascending=False)
     st.dataframe(df_insiders, use_container_width=True)
@@ -146,13 +154,12 @@ else:
         filings_for_ticker = get_filings_for_ticker(df_insiders, chosen_ticker)
         st.dataframe(filings_for_ticker, use_container_width=True)
 
-        # 5) Show price chart + optional RSI/SMA (via yfinance)
+        # 5) Show price chart + simulated return since average trade date
         st.markdown(f"### {chosen_ticker} Price Chart (Since Avg Trade Date)")
         ret_df = simulate_returns_for_ticker(filings_for_ticker)
         if not ret_df.empty:
             avg_date = ret_df["Avg_Trade_Date"].iloc[0]
             st.write(f"- Average Insider Trade Date: **{avg_date}**")
-            # Fetch and plot price from one day before avg_date to today
             try:
                 hist = yf.download(
                     chosen_ticker,
@@ -169,25 +176,24 @@ else:
                 st.pyplot(fig)
             except Exception:
                 st.error("Failed to fetch price history for chart.")
-            # Show Return %
             st.subheader("💰 Simulated Return Since Average Trade Date")
             st.dataframe(ret_df, use_container_width=True)
         else:
             st.info("Not enough data to simulate returns for this ticker.")
 
-# 6) Optionally, show a portfolio view of all “clustered” tickers
+# 6) Simulated portfolio view of clustered buys
 st.subheader("💼 Simulated Portfolio: All Clustered Buys")
 clustered = df_counts[df_counts["Buy Count"] >= 3]["Ticker"].tolist()
 if clustered:
     st.write(f"Tickers with ≥ 3 insider buys: {', '.join(clustered)}")
-    port_list = []
+    portfolio_list = []
     for t in clustered:
         df_t = get_filings_for_ticker(df_insiders, t)
         ret = simulate_returns_for_ticker(df_t)
         if not ret.empty:
-            port_list.append(ret.iloc[0])
-    if port_list:
-        df_portfolio = pd.DataFrame(port_list)
+            portfolio_list.append(ret.iloc[0])
+    if portfolio_list:
+        df_portfolio = pd.DataFrame(portfolio_list)
         st.dataframe(df_portfolio, use_container_width=True)
     else:
         st.info("No return data available for clustered tickers yet.")
